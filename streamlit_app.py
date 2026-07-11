@@ -83,6 +83,18 @@ TRANSPORT_INDICATORS = [
 ]
 COUNTRY_PARAM = ";".join(ASEAN_COUNTRIES)
 WB_API = "https://api.worldbank.org/v2/country/{countries}/indicator/{indicator}"
+DATA_COLUMNS = [
+    "iso3",
+    "country",
+    "year",
+    "indicator_code",
+    "indicator",
+    "unit",
+    "pillar",
+    "higher_is_better",
+    "source_country_label",
+    "value",
+]
 
 
 st.set_page_config(
@@ -146,7 +158,8 @@ def fetch_world_bank_indicator(indicator: Indicator, start_year: int, end_year: 
         "date": f"{start_year}:{end_year}",
     }
     url = WB_API.format(countries=COUNTRY_PARAM, indicator=indicator.code)
-    response = requests.get(url, params=params, timeout=12)
+    headers = {"User-Agent": "ASEAN-Economic-Radar/1.0 (+https://streamlit.app)"}
+    response = requests.get(url, params=params, headers=headers, timeout=20)
     response.raise_for_status()
     payload = response.json()
     rows = payload[1] if isinstance(payload, list) and len(payload) > 1 else []
@@ -171,14 +184,14 @@ def fetch_world_bank_indicator(indicator: Indicator, start_year: int, end_year: 
                 "value": row.get("value"),
             }
         )
-    return pd.DataFrame.from_records(records)
+    return pd.DataFrame.from_records(records, columns=DATA_COLUMNS)
 
 
 @st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
 def load_wdi_data(start_year: int, end_year: int) -> pd.DataFrame:
     frames = []
     failures = []
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         future_map = {
             executor.submit(fetch_world_bank_indicator, indicator, start_year, end_year): indicator
             for indicator in INDICATORS
@@ -186,15 +199,16 @@ def load_wdi_data(start_year: int, end_year: int) -> pd.DataFrame:
         for future in as_completed(future_map):
             indicator = future_map[future]
             try:
-                frames.append(future.result())
+                frame = future.result()
+                if not frame.empty:
+                    frames.append(frame)
             except Exception as exc:  # pragma: no cover - visible in Streamlit app
                 failures.append(f"{indicator.label}: {exc}")
 
     if not frames:
-        raise RuntimeError(
-            "World Bank API could not return data for the selected indicators. "
-            "Try refreshing the app or selecting a shorter year range."
-        )
+        data = pd.DataFrame(columns=DATA_COLUMNS)
+        data.attrs["failures"] = failures or ["World Bank API returned no rows for the selected range."]
+        return data
 
     data = pd.concat(frames, ignore_index=True)
     data["value"] = pd.to_numeric(data["value"], errors="coerce")
@@ -876,6 +890,16 @@ def main() -> None:
         data = load_wdi_data(start_year, end_year)
 
     failures = data.attrs.get("failures", [])
+    if data.empty:
+        st.title("ASEAN Economic Radar")
+        st.caption("Monitoring dan pembandingan indikator ekonomi 10 negara ASEAN berbasis data resmi publik.")
+        st.error(
+            "Data World Bank belum berhasil diambil pada sesi ini. "
+            "App tetap berjalan, tetapi grafik akan muncul setelah koneksi API pulih atau halaman di-refresh."
+        )
+        render_methodology(failures)
+        return
+
     latest = latest_observations(data)
     radar = build_radar_index(latest)
     render_header(data, latest)
