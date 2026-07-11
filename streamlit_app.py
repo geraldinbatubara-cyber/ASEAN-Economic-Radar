@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable
 
 import pandas as pd
@@ -113,7 +114,7 @@ def fetch_world_bank_indicator(indicator: Indicator, start_year: int, end_year: 
         "date": f"{start_year}:{end_year}",
     }
     url = WB_API.format(countries=COUNTRY_PARAM, indicator=indicator.code)
-    response = requests.get(url, params=params, timeout=30)
+    response = requests.get(url, params=params, timeout=12)
     response.raise_for_status()
     payload = response.json()
     rows = payload[1] if isinstance(payload, list) and len(payload) > 1 else []
@@ -145,14 +146,23 @@ def fetch_world_bank_indicator(indicator: Indicator, start_year: int, end_year: 
 def load_wdi_data(start_year: int, end_year: int) -> pd.DataFrame:
     frames = []
     failures = []
-    for indicator in INDICATORS:
-        try:
-            frames.append(fetch_world_bank_indicator(indicator, start_year, end_year))
-        except Exception as exc:  # pragma: no cover - visible in Streamlit app
-            failures.append(f"{indicator.label}: {exc}")
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_map = {
+            executor.submit(fetch_world_bank_indicator, indicator, start_year, end_year): indicator
+            for indicator in INDICATORS
+        }
+        for future in as_completed(future_map):
+            indicator = future_map[future]
+            try:
+                frames.append(future.result())
+            except Exception as exc:  # pragma: no cover - visible in Streamlit app
+                failures.append(f"{indicator.label}: {exc}")
 
     if not frames:
-        raise RuntimeError("World Bank API could not return data for the selected indicators.")
+        raise RuntimeError(
+            "World Bank API could not return data for the selected indicators. "
+            "Try refreshing the app or selecting a shorter year range."
+        )
 
     data = pd.concat(frames, ignore_index=True)
     data["value"] = pd.to_numeric(data["value"], errors="coerce")
