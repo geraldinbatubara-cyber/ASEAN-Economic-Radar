@@ -22,13 +22,17 @@ MVP ini mencakup seluruh negara anggota ASEAN kecuali Timor-Leste:
 - ASEAN Snapshot: ringkasan regional, ranking pertumbuhan, dan skor komparatif.
 - Country Compare: perbandingan tren antarnegara untuk setiap indikator.
 - Indicator Explorer: heatmap skor relatif antarnegara.
-- Economic Radar Index: indeks komparatif transparan berbasis normalisasi 0-100.
+- Economic Radar Index: dua radar chart berdampingan untuk membandingkan dua negara.
+- Prediction Lab: proyeksi eksploratif dengan model OLS trend dan Ridge ML autoregression.
 - Sources & Methodology: catatan sumber data dan metodologi.
 
 ## Sumber Data
 
 Versi awal menggunakan World Bank Open Data / World Development Indicators API secara live saat aplikasi dijalankan.
 Ekspansi berikutnya disiapkan untuk ASEANstats, IMF Data, dan UN Comtrade.
+
+Indikator mencakup pertumbuhan, inflasi, pengangguran, perdagangan, FDI, current account, investasi domestik,
+tabungan, struktur ekonomi sektoral, fiskal, utang pemerintah pusat, dan kesiapan digital.
 
 Lihat `data_sources.md` untuk detail.
 

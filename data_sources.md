@@ -23,3 +23,8 @@ This MVP uses official or internationally recognized public data sources.
 - UN Comtrade
   - https://comtradeplus.un.org/
   - Useful for detailed merchandise trade by reporter, partner, and product.
+
+## Forecasting note
+
+The Prediction Lab is an exploratory comparison tool. It uses historical WDI series and compares a simple
+econometric trend model with a lightweight ridge autoregression model. The outputs are not official forecasts.
