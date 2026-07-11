@@ -22,7 +22,7 @@ MVP ini mencakup seluruh negara anggota ASEAN kecuali Timor-Leste:
 - ASEAN Snapshot: ringkasan regional, ranking pertumbuhan, dan skor komparatif.
 - Country Compare: perbandingan tren antarnegara untuk setiap indikator.
 - Indicator Explorer: heatmap skor relatif antarnegara.
-- Transport Cost & Logistics: perbandingan biaya kepatuhan ekspor/impor, LPI, dan konektivitas transportasi.
+- Transport Cost & Logistics: perbandingan biaya kepatuhan ekspor/impor dan konektivitas pengiriman.
 - Economic Radar Index: dua radar chart berdampingan untuk membandingkan dua negara.
 - Prediction Lab: proyeksi eksploratif dengan model OLS trend dan Ridge ML autoregression.
 - Sources & Methodology: catatan sumber data dan metodologi.
@@ -34,7 +34,7 @@ Ekspansi berikutnya disiapkan untuk ASEANstats, IMF Data, dan UN Comtrade.
 
 Indikator mencakup pertumbuhan, inflasi, pengangguran, perdagangan, FDI, current account, investasi domestik,
 tabungan, struktur ekonomi sektoral, fiskal, utang pemerintah pusat, kesiapan digital, biaya kepatuhan ekspor/impor,
-performa logistik, dan konektivitas transportasi perdagangan.
+dan konektivitas transportasi perdagangan.
 
 Lihat `data_sources.md` untuk detail.
 

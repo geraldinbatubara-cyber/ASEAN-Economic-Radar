@@ -32,6 +32,5 @@ econometric trend model with a lightweight ridge autoregression model. The outpu
 ## Transport cost and logistics note
 
 The Transport Cost & Logistics page uses World Bank indicators for export/import border and documentary compliance
-costs, Logistics Performance Index dimensions, liner shipping connectivity, port traffic, and air freight. These are
-cross-country proxies for trade logistics cost and efficiency, not domestic retail passenger fares or firm-specific
-freight quotes.
+costs plus liner shipping connectivity. These are cross-country proxies for trade logistics cost and connectivity,
+not domestic retail passenger fares or firm-specific freight quotes. Sparse indicators are filtered out of the UI.

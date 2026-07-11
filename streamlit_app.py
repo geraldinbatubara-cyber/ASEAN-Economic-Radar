@@ -60,12 +60,7 @@ INDICATORS = [
     Indicator("IC.IMP.CSBC.CD", "Cost to import: border compliance", "US$", "Transport Cost", False, "Border compliance cost to import."),
     Indicator("IC.EXP.CSDC.CD", "Cost to export: documentary compliance", "US$", "Transport Cost", False, "Documentary compliance cost to export."),
     Indicator("IC.IMP.CSDC.CD", "Cost to import: documentary compliance", "US$", "Transport Cost", False, "Documentary compliance cost to import."),
-    Indicator("LP.LPI.OVRL.XQ", "Logistics performance index", "score", "Logistics Performance", True, "Overall logistics performance score."),
-    Indicator("LP.LPI.ITRN.XQ", "LPI international shipments", "score", "Logistics Cost Proxy", True, "Ease of arranging competitively priced shipments."),
-    Indicator("LP.LPI.INFR.XQ", "LPI transport infrastructure", "score", "Logistics Performance", True, "Quality of trade and transport infrastructure."),
     Indicator("IS.SHP.GCNW.XQ", "Liner shipping connectivity", "index", "Transport Connectivity", True, "Connectivity to global liner shipping networks."),
-    Indicator("IS.SHP.GOOD.TU", "Container port traffic", "TEU", "Transport Connectivity", True, "Container port throughput."),
-    Indicator("IS.AIR.GOOD.MT.K1", "Air freight", "million ton-km", "Transport Connectivity", True, "Air transport freight volume."),
 ]
 
 INDICATOR_BY_LABEL = {item.label: item for item in INDICATORS}
@@ -74,13 +69,9 @@ TRANSPORT_INDICATORS = [
     "Cost to import: border compliance",
     "Cost to export: documentary compliance",
     "Cost to import: documentary compliance",
-    "Logistics performance index",
-    "LPI international shipments",
-    "LPI transport infrastructure",
     "Liner shipping connectivity",
-    "Container port traffic",
-    "Air freight",
 ]
+TRANSPORT_MIN_COUNTRIES = 3
 COUNTRY_PARAM = ";".join(ASEAN_COUNTRIES)
 WB_API = "https://api.worldbank.org/v2/country/{countries}/indicator/{indicator}"
 DATA_COLUMNS = [
@@ -609,15 +600,30 @@ def build_transport_score(latest: pd.DataFrame, indicator_labels: list[str]) -> 
     return overall
 
 
+def available_transport_labels(latest: pd.DataFrame) -> list[str]:
+    available = []
+    for label in TRANSPORT_INDICATORS:
+        rows = latest[latest["indicator"].eq(label)].copy()
+        if rows.empty:
+            continue
+        rows["value"] = pd.to_numeric(rows["value"], errors="coerce")
+        rows = rows.dropna(subset=["value"])
+        if rows["country"].nunique() >= TRANSPORT_MIN_COUNTRIES:
+            available.append(label)
+    return available
+
+
 def render_transport_cost(data: pd.DataFrame, latest: pd.DataFrame) -> None:
     st.subheader("Transport Cost & Logistics")
     st.caption(
-        "Komparasi biaya kepatuhan ekspor/impor dan proxy efisiensi logistik dari World Bank WDI/LPI."
+        "Komparasi biaya kepatuhan ekspor/impor dan konektivitas pengiriman dari World Bank WDI."
     )
 
-    available_labels = [label for label in TRANSPORT_INDICATORS if label in latest["indicator"].unique()]
+    available_labels = available_transport_labels(latest)
     if not available_labels:
-        st.warning("Data biaya transportasi/logistik belum tersedia pada rentang tahun ini.")
+        st.warning(
+            "Data biaya transportasi/logistik belum tersedia dengan cakupan negara yang cukup pada rentang tahun ini."
+        )
         return
 
     selected_labels = st.multiselect(
@@ -636,11 +642,13 @@ def render_transport_cost(data: pd.DataFrame, latest: pd.DataFrame) -> None:
     )
     selected_indicator = INDICATOR_BY_LABEL[selected_indicator_label]
     selected_latest = latest[latest["indicator"].eq(selected_indicator_label)].copy()
-    if selected_latest.empty:
+    selected_latest["value"] = pd.to_numeric(selected_latest["value"], errors="coerce")
+    selected_latest = selected_latest.dropna(subset=["value"])
+    if selected_latest.empty or selected_latest["country"].nunique() < TRANSPORT_MIN_COUNTRIES:
         st.warning("Data latest available untuk parameter ini belum tersedia.")
         return
 
-    sorted_latest = selected_latest.sort_values("value", ascending=selected_indicator.higher_is_better is False)
+    sorted_latest = selected_latest.sort_values("value", ascending=not selected_indicator.higher_is_better)
     best_row = sorted_latest.iloc[0]
     worst_row = sorted_latest.iloc[-1]
     cols = st.columns(3)
@@ -695,6 +703,8 @@ def render_transport_cost(data: pd.DataFrame, latest: pd.DataFrame) -> None:
         default=["Indonesia", "Malaysia", "Singapore", "Thailand", "Vietnam"],
     )
     trend_data = selected_data(data, trend_countries, [selected_indicator_label])
+    trend_data["value"] = pd.to_numeric(trend_data["value"], errors="coerce")
+    trend_data = trend_data.dropna(subset=["value"])
     if trend_data.empty:
         st.info("Tren tidak tersedia untuk pilihan negara/parameter ini.")
     else:
@@ -710,6 +720,11 @@ def render_transport_cost(data: pd.DataFrame, latest: pd.DataFrame) -> None:
         st.plotly_chart(fig, use_container_width=True)
 
     table = latest[latest["indicator"].isin(selected_labels)].copy()
+    table["value"] = pd.to_numeric(table["value"], errors="coerce")
+    table = table.dropna(subset=["value"])
+    if table.empty:
+        st.info("Tabel latest available belum tersedia untuk pilihan parameter ini.")
+        return
     table["formatted_value"] = table.apply(lambda row: fmt_number(row["value"], row["unit"]), axis=1)
     st.dataframe(
         table[["country", "indicator", "year", "formatted_value", "pillar"]]
@@ -728,7 +743,7 @@ def render_transport_cost(data: pd.DataFrame, latest: pd.DataFrame) -> None:
     )
 
     st.markdown(
-        '<p class="source-note">Catatan: indikator biaya ekspor/impor adalah biaya kepatuhan lintas batas/dokumen, bukan tarif perjalanan domestik atau ongkos logistik perusahaan. LPI dipakai sebagai proxy efisiensi logistik dan kualitas transportasi perdagangan.</p>',
+        '<p class="source-note">Catatan: indikator biaya ekspor/impor adalah biaya kepatuhan lintas batas/dokumen, bukan tarif perjalanan domestik atau ongkos logistik perusahaan. Parameter yang terlalu sparse otomatis tidak ditampilkan.</p>',
         unsafe_allow_html=True,
     )
 
@@ -798,8 +813,6 @@ def render_prediction_lab(data: pd.DataFrame) -> None:
         "Individuals using the Internet",
         "Cost to export: border compliance",
         "Cost to import: border compliance",
-        "Logistics performance index",
-        "LPI international shipments",
         "Liner shipping connectivity",
     ]
     available_labels = [item.label for item in INDICATORS if item.label in forecast_indicators]
@@ -851,9 +864,8 @@ def render_methodology(failures: list[str]) -> None:
         tahunan, sedangkan model ML memakai ridge autoregression berbasis lag, rolling mean, dan momentum historis.
         Output ini bukan proyeksi resmi.
 
-        **Transport Cost & Logistics:** memakai indikator World Bank untuk biaya kepatuhan ekspor/impor, LPI, dan
-        konektivitas transportasi perdagangan. Ini adalah proxy biaya-logistik lintas negara, bukan ongkos transport
-        domestik retail.
+        **Transport Cost & Logistics:** memakai indikator World Bank untuk biaya kepatuhan ekspor/impor dan
+        konektivitas pengiriman. Ini adalah proxy biaya-logistik lintas negara, bukan ongkos transport domestik retail.
 
         **Catatan:** tahun terbaru dapat berbeda antar negara/indikator karena jadwal rilis statistik resmi tidak seragam.
         """
