@@ -28,3 +28,10 @@ This MVP uses official or internationally recognized public data sources.
 
 The Prediction Lab is an exploratory comparison tool. It uses historical WDI series and compares a simple
 econometric trend model with a lightweight ridge autoregression model. The outputs are not official forecasts.
+
+## Transport cost and logistics note
+
+The Transport Cost & Logistics page uses World Bank indicators for export/import border and documentary compliance
+costs, Logistics Performance Index dimensions, liner shipping connectivity, port traffic, and air freight. These are
+cross-country proxies for trade logistics cost and efficiency, not domestic retail passenger fares or firm-specific
+freight quotes.

@@ -56,9 +56,31 @@ INDICATORS = [
     Indicator("GC.TAX.TOTL.GD.ZS", "Tax revenue", "% of GDP", "Fiscal Capacity", True, "Tax revenue relative to GDP."),
     Indicator("GC.DOD.TOTL.GD.ZS", "Central government debt", "% of GDP", "Fiscal Risk", False, "Central government debt relative to GDP."),
     Indicator("IT.NET.USER.ZS", "Individuals using the Internet", "% of population", "Digital Readiness", True, "Internet usage as a digital readiness proxy."),
+    Indicator("IC.EXP.CSBC.CD", "Cost to export: border compliance", "US$", "Transport Cost", False, "Border compliance cost to export."),
+    Indicator("IC.IMP.CSBC.CD", "Cost to import: border compliance", "US$", "Transport Cost", False, "Border compliance cost to import."),
+    Indicator("IC.EXP.CSDC.CD", "Cost to export: documentary compliance", "US$", "Transport Cost", False, "Documentary compliance cost to export."),
+    Indicator("IC.IMP.CSDC.CD", "Cost to import: documentary compliance", "US$", "Transport Cost", False, "Documentary compliance cost to import."),
+    Indicator("LP.LPI.OVRL.XQ", "Logistics performance index", "score", "Logistics Performance", True, "Overall logistics performance score."),
+    Indicator("LP.LPI.ITRN.XQ", "LPI international shipments", "score", "Logistics Cost Proxy", True, "Ease of arranging competitively priced shipments."),
+    Indicator("LP.LPI.INFR.XQ", "LPI transport infrastructure", "score", "Logistics Performance", True, "Quality of trade and transport infrastructure."),
+    Indicator("IS.SHP.GCNW.XQ", "Liner shipping connectivity", "index", "Transport Connectivity", True, "Connectivity to global liner shipping networks."),
+    Indicator("IS.SHP.GOOD.TU", "Container port traffic", "TEU", "Transport Connectivity", True, "Container port throughput."),
+    Indicator("IS.AIR.GOOD.MT.K1", "Air freight", "million ton-km", "Transport Connectivity", True, "Air transport freight volume."),
 ]
 
 INDICATOR_BY_LABEL = {item.label: item for item in INDICATORS}
+TRANSPORT_INDICATORS = [
+    "Cost to export: border compliance",
+    "Cost to import: border compliance",
+    "Cost to export: documentary compliance",
+    "Cost to import: documentary compliance",
+    "Logistics performance index",
+    "LPI international shipments",
+    "LPI transport infrastructure",
+    "Liner shipping connectivity",
+    "Container port traffic",
+    "Air freight",
+]
 COUNTRY_PARAM = ";".join(ASEAN_COUNTRIES)
 WB_API = "https://api.worldbank.org/v2/country/{countries}/indicator/{indicator}"
 
@@ -550,6 +572,153 @@ def render_indicator_explorer(data: pd.DataFrame, latest: pd.DataFrame) -> None:
     st.dataframe(detail.sort_values(["Indicator", "Country"]), use_container_width=True, hide_index=True)
 
 
+def build_transport_score(latest: pd.DataFrame, indicator_labels: list[str]) -> pd.DataFrame:
+    transport_latest = latest[latest["indicator"].isin(indicator_labels)].copy()
+    if transport_latest.empty:
+        return pd.DataFrame()
+
+    pieces = []
+    for indicator_label, group in transport_latest.groupby("indicator"):
+        indicator = INDICATOR_BY_LABEL[indicator_label]
+        part = group[["country", "indicator", "value", "year"]].copy()
+        part["score"] = normalize_series(part["value"], indicator.higher_is_better)
+        pieces.append(part)
+
+    scored = pd.concat(pieces, ignore_index=True)
+    overall = (
+        scored.groupby("country", as_index=False)["score"]
+        .mean()
+        .rename(columns={"score": "transport_efficiency_score"})
+        .sort_values("transport_efficiency_score", ascending=False)
+    )
+    overall["rank"] = range(1, len(overall) + 1)
+    return overall
+
+
+def render_transport_cost(data: pd.DataFrame, latest: pd.DataFrame) -> None:
+    st.subheader("Transport Cost & Logistics")
+    st.caption(
+        "Komparasi biaya kepatuhan ekspor/impor dan proxy efisiensi logistik dari World Bank WDI/LPI."
+    )
+
+    available_labels = [label for label in TRANSPORT_INDICATORS if label in latest["indicator"].unique()]
+    if not available_labels:
+        st.warning("Data biaya transportasi/logistik belum tersedia pada rentang tahun ini.")
+        return
+
+    selected_labels = st.multiselect(
+        "Pilih parameter biaya/logistik",
+        options=available_labels,
+        default=available_labels[: min(6, len(available_labels))],
+    )
+    if not selected_labels:
+        st.info("Pilih minimal satu parameter untuk dibandingkan.")
+        return
+
+    selected_indicator_label = st.selectbox(
+        "Parameter utama untuk ranking dan tren",
+        options=selected_labels,
+        index=0,
+    )
+    selected_indicator = INDICATOR_BY_LABEL[selected_indicator_label]
+    selected_latest = latest[latest["indicator"].eq(selected_indicator_label)].copy()
+    if selected_latest.empty:
+        st.warning("Data latest available untuk parameter ini belum tersedia.")
+        return
+
+    sorted_latest = selected_latest.sort_values("value", ascending=selected_indicator.higher_is_better is False)
+    best_row = sorted_latest.iloc[0]
+    worst_row = sorted_latest.iloc[-1]
+    cols = st.columns(3)
+    cols[0].metric(
+        "Terbaik",
+        best_row["country"],
+        f"{fmt_number(best_row['value'], selected_indicator.unit)} ({int(best_row['year'])})",
+    )
+    cols[1].metric(
+        "Tertinggi / terendah lawan",
+        worst_row["country"],
+        f"{fmt_number(worst_row['value'], selected_indicator.unit)} ({int(worst_row['year'])})",
+    )
+    cols[2].metric("Negara dengan data", f"{selected_latest['country'].nunique()}")
+
+    left, right = st.columns([1, 1])
+    with left:
+        fig = px.bar(
+            sorted_latest,
+            x="value",
+            y="country",
+            orientation="h",
+            color="value",
+            color_continuous_scale="Teal",
+            labels={"value": selected_indicator.unit, "country": ""},
+            title=f"Latest available: {selected_indicator.label}",
+        )
+        fig.update_layout(
+            yaxis={"categoryorder": "array", "categoryarray": sorted_latest["country"].tolist()[::-1]},
+            coloraxis_showscale=False,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    with right:
+        transport_score = build_transport_score(latest, selected_labels)
+        if not transport_score.empty:
+            fig = px.bar(
+                transport_score,
+                x="transport_efficiency_score",
+                y="country",
+                orientation="h",
+                color="transport_efficiency_score",
+                color_continuous_scale="Viridis",
+                labels={"transport_efficiency_score": "Score 0-100", "country": ""},
+                title="Transport cost-efficiency score",
+            )
+            fig.update_layout(yaxis={"categoryorder": "total ascending"}, coloraxis_showscale=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+    trend_countries = st.multiselect(
+        "Pilih negara untuk tren",
+        options=list(ASEAN_COUNTRIES.values()),
+        default=["Indonesia", "Malaysia", "Singapore", "Thailand", "Vietnam"],
+    )
+    trend_data = selected_data(data, trend_countries, [selected_indicator_label])
+    if trend_data.empty:
+        st.info("Tren tidak tersedia untuk pilihan negara/parameter ini.")
+    else:
+        fig = px.line(
+            trend_data.sort_values("year"),
+            x="year",
+            y="value",
+            color="country",
+            markers=True,
+            labels={"value": selected_indicator.unit, "year": "Year", "country": "Country"},
+            title=f"Tren {selected_indicator.label}",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    table = latest[latest["indicator"].isin(selected_labels)].copy()
+    table["formatted_value"] = table.apply(lambda row: fmt_number(row["value"], row["unit"]), axis=1)
+    st.dataframe(
+        table[["country", "indicator", "year", "formatted_value", "pillar"]]
+        .rename(
+            columns={
+                "country": "Country",
+                "indicator": "Parameter",
+                "year": "Latest Year",
+                "formatted_value": "Latest Value",
+                "pillar": "Group",
+            }
+        )
+        .sort_values(["Parameter", "Country"]),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.markdown(
+        '<p class="source-note">Catatan: indikator biaya ekspor/impor adalah biaya kepatuhan lintas batas/dokumen, bukan tarif perjalanan domestik atau ongkos logistik perusahaan. LPI dipakai sebagai proxy efisiensi logistik dan kualitas transportasi perdagangan.</p>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_radar_index(radar: pd.DataFrame) -> None:
     st.subheader("Economic Radar Index")
     left_country, right_country = st.columns(2)
@@ -613,6 +782,11 @@ def render_prediction_lab(data: pd.DataFrame) -> None:
         "Gross savings",
         "Tax revenue",
         "Individuals using the Internet",
+        "Cost to export: border compliance",
+        "Cost to import: border compliance",
+        "Logistics performance index",
+        "LPI international shipments",
+        "Liner shipping connectivity",
     ]
     available_labels = [item.label for item in INDICATORS if item.label in forecast_indicators]
     indicator_label = controls[2].selectbox("Indikator prediksi", options=available_labels, index=0)
@@ -663,6 +837,10 @@ def render_methodology(failures: list[str]) -> None:
         tahunan, sedangkan model ML memakai ridge autoregression berbasis lag, rolling mean, dan momentum historis.
         Output ini bukan proyeksi resmi.
 
+        **Transport Cost & Logistics:** memakai indikator World Bank untuk biaya kepatuhan ekspor/impor, LPI, dan
+        konektivitas transportasi perdagangan. Ini adalah proxy biaya-logistik lintas negara, bukan ongkos transport
+        domestik retail.
+
         **Catatan:** tahun terbaru dapat berbeda antar negara/indikator karena jadwal rilis statistik resmi tidak seragam.
         """
     )
@@ -687,6 +865,7 @@ def main() -> None:
             "ASEAN Snapshot",
             "Country Compare",
             "Indicator Explorer",
+            "Transport Cost & Logistics",
             "Economic Radar Index",
             "Prediction Lab",
             "Sources & Methodology",
@@ -707,6 +886,8 @@ def main() -> None:
         render_country_compare(data)
     elif page == "Indicator Explorer":
         render_indicator_explorer(data, latest)
+    elif page == "Transport Cost & Logistics":
+        render_transport_cost(data, latest)
     elif page == "Economic Radar Index":
         render_radar_index(radar)
     elif page == "Prediction Lab":
