@@ -371,12 +371,14 @@ def build_forecast_frame(series: pd.DataFrame, horizon: int) -> tuple[pd.DataFra
     historical["series"] = "Historical"
     ols_fitted, ols_forecast = fit_ols_forecast(series, horizon)
     ml_fitted, ml_forecast = fit_ml_forecast(series, horizon)
-    frames = [historical, ols_fitted, ols_forecast, ml_fitted, ml_forecast]
-    forecast_frame = pd.concat([frame for frame in frames if not frame.empty], ignore_index=True)
+    frames = [frame for frame in [historical, ols_fitted, ols_forecast, ml_fitted, ml_forecast] if not frame.empty]
     metrics = {
         "OLS trend MAE": model_mae(series, ols_fitted),
         "Ridge ML MAE": model_mae(series, ml_fitted),
     }
+    if not frames:
+        return pd.DataFrame(columns=["year", "value", "series"]), metrics
+    forecast_frame = pd.concat(frames, ignore_index=True)
     return forecast_frame, metrics
 
 
@@ -624,6 +626,9 @@ def render_prediction_lab(data: pd.DataFrame) -> None:
         with column:
             render_forecast_chart(forecast_frame, country, indicator)
             render_forecast_summary(metrics, indicator.unit)
+            if forecast_frame.empty:
+                st.info(f"Data {indicator.label} untuk {country} belum tersedia atau terlalu pendek untuk prediksi.")
+                continue
             future = forecast_frame[forecast_frame["series"].str.contains("forecast", case=False, na=False)].copy()
             if not future.empty:
                 future["formatted_value"] = future["value"].apply(lambda value: fmt_number(value, indicator.unit))
